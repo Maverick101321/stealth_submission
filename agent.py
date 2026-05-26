@@ -146,6 +146,25 @@ def summarize_tool_result(name, result):
 
 def system_prompt(memory):
     memory_text = json.dumps(memory, ensure_ascii=False, indent=2) if memory else "No prior memory yet."
+    rules = [
+        "Use tools for current balances, recent transactions, upcoming bills, and reminders.",
+        "Prefer computed_summary values from tool results for arithmetic.",
+        "Do not invent tool data. If a number depends on balances, bills, or spending, call tools.",
+        "Be concise, specific, and judgment-oriented. Mention tradeoffs and next actions.",
+        "In Session 2, actively connect new advice to remembered commitments and refresh changed facts with tools.",
+    ]
+    if memory is not None:
+        food_target = memory.get("food_budget_target", {}).get("monthly_target_inr")
+        if food_target is not None:
+            rules.append(
+                "If the user's current food delivery spending this month is close to or exceeding "
+                f"their target of {food_target}, flag it proactively alongside any new financial decision."
+            )
+        rules.append(
+            "Proactively check if the user is on track with their food delivery budget commitment "
+            "and mention it when relevant to a new spending decision."
+        )
+    rules_text = "\n".join(f"- {rule}" for rule in rules)
     return f"""
 You are a practical finance companion for one user.
 
@@ -156,17 +175,14 @@ Existing memory:
 {memory_text}
 
 Rules:
-- Use tools for current balances, recent transactions, upcoming bills, and reminders.
-- Prefer computed_summary values from tool results for arithmetic.
-- Do not invent tool data. If a number depends on balances, bills, or spending, call tools.
-- Be concise, specific, and judgment-oriented. Mention tradeoffs and next actions.
-- In Session 2, actively connect new advice to remembered commitments and refresh changed facts with tools.
+{rules_text}
 """.strip()
 
 
 def execute_tool(tool_call):
     name = tool_call.function.name
-    args = json.loads(tool_call.function.arguments or "{}")
+    raw_args = tool_call.function.arguments
+    args = json.loads(raw_args) if raw_args and raw_args != 'null' else {}
     log("TOOL_CALL", {"name": name, "arguments": args})
     result = TOOLS[name](**args)
     log("TOOL_RESULT", {"name": name, "result": result})
@@ -174,17 +190,33 @@ def execute_tool(tool_call):
     return {
         "role": "tool",
         "tool_call_id": tool_call.id,
-        "name": name,
         "content": json.dumps(tool_payload, ensure_ascii=False),
     }
 
 
+"""
 def assistant_message_dict(message):
     data = {"role": "assistant", "content": message.content or ""}
     if message.tool_calls:
         data["tool_calls"] = [tc.model_dump() for tc in message.tool_calls]
     return data
+"""
 
+def assistant_message_dict(message):
+    data = {"role": "assistant", "content": message.content or ""}
+    if message.tool_calls:
+        data["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments or "{}",
+                },
+            }
+            for tc in message.tool_calls
+        ]
+    return data
 
 def run_agent_turn(client, messages):
     while True:
