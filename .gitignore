@@ -1,0 +1,15 @@
+# Runtime memory (created after Session 1)
+memory.json
+
+# Secrets (if you ever use a .env file locally)
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
