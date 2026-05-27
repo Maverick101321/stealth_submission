@@ -164,6 +164,12 @@ def system_prompt(memory):
             "Proactively check if the user is on track with their food delivery budget commitment "
             "and mention it when relevant to a new spending decision."
         )
+        rules.append(
+            "If the user already has a reminder set for a house fund transfer "
+            "(visible in memory reminders_set), confirm it is still pending and "
+            "re-set it using set_reminder with the same content if appropriate, "
+            "rather than creating a generic reminder."
+        )
     rules_text = "\n".join(f"- {rule}" for rule in rules)
     return f"""
 You are a practical finance companion for one user.
